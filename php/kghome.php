@@ -355,7 +355,10 @@ function foot_html() {
     echo '<p class="src">提供: <a href="https://exbridge.jp/">株式会社エクスブリッジ</a>（名古屋市）／'
        . '<a href="https://kappstore.exbridge.jp/app.php?id=bf709cfc7b0bf51a&amp;ref=kghome">オンプレミス版</a>もあります。</p>';
     echo exb_about_html();
-    echo '</div></footer></body></html>';
+    echo '</div></footer>';
+    // 関連する記事（バイブコーディング的仕事ブログ）。AI が引用するこのページからブログへ内部リンク（2026-11-04・当社の公開先だけ）
+    if (($_SERVER['HTTP_HOST'] ?? '') === 'kurage.exbridge.jp' && @include_once __DIR__ . '/vibeblog_related.php') { echo vb_related(['グループホーム', '障害', '事業所', 'WAM NET', '福祉', '公開データ'], 'kghome'); }
+    echo '</body></html>';
 }
 
 /** 住所の入力欄。どのページからでも引き直せるように置く。 */
