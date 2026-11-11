@@ -65,6 +65,50 @@ foreach ($db->query('SELECT k,v FROM meta') as $r) { $META[$r['k']] = $r['v']; }
 $TPS = json_decode($META['timepoints'], true);
 $LATEST = $META['latest_tp'];
 
+// ── 行政処分の公表（2026-11-11）────────────────────────────
+// 事業所名で検索して来る人が、処分の報道があった日に一気に増える（11/10 恵庭市の1事業所に238人）。
+// 処分庁（都道府県・指定都市・中核市）の発表資料を、**書いてあるとおりに**転記して kghome_data/shobun.json に置く。
+// 全国を機械で集める元データは無い（WAM NET のオープンデータに処分は入っていない）ので、発表資料を読んで1件ずつ足す。
+// 引き当ては事業所番号（名前では引かない。同じ名前の別事業所に付けないため）。報道の記事からは足さない。
+$SHOBUN = array();
+$sj = @file_get_contents(dirname($DB_PATH) . '/shobun.json');
+if ($sj !== false) { $sd = json_decode($sj, true); if (is_array($sd)) { $SHOBUN = $sd; } }
+function ymd_ja($d) { return (int)substr($d, 0, 4) . '年' . (int)substr($d, 5, 2) . '月' . (int)substr($d, 8, 2) . '日'; }
+function shobun_for($office_nos) {
+    global $SHOBUN;
+    $hit = array();
+    foreach ($SHOBUN as $s) { if (in_array($s['office_no'], $office_nos, true)) { $hit[] = $s; } }
+    usort($hit, function ($x, $y) { return strcmp($y['date'], $x['date']); });
+    return $hit;
+}
+function shobun_html($list, $with_name = false) {
+    if (!count($list)) { return ''; }
+    $today = date('Y-m-d');
+    $o = '<h2 id="shobun">行政処分の公表</h2>';
+    foreach ($list as $s) {
+        $state = '';
+        if (!empty($s['from']) && !empty($s['to'])) {
+            $state = $today < $s['from'] ? '（これから始まります）' : ($today > $s['to'] ? '（期間は終わっています）' : '（いま期間中です）');
+        }
+        $o .= '<div class="panel" style="border-left:5px solid #c9853a">'
+            . '<p style="margin:0 0 10px"><b>' . h(ymd_ja($s['date'])) . '、' . h($s['authority']) . 'が'
+            . ($with_name ? '「' . h($s['office_name']) . '」について' : 'この事業所について') . '、次の行政処分を公表しています。</b></p>'
+            . '<div class="tscroll"><table class="t" style="min-width:0"><tbody>'
+            . '<tr><th style="width:7.5em">処分の内容</th><td>' . h($s['action']) . '</td></tr>';
+        if (!empty($s['from'])) {
+            $o .= '<tr><th>期間</th><td>' . h(ymd_ja($s['from'])) . ' から ' . h(ymd_ja($s['to'])) . ' まで' . $state . '</td></tr>';
+        }
+        $o .= '<tr><th>違反事実</th><td>' . implode('<br>', array_map(function ($f) { return '・' . h($f); }, $s['facts'])) . '</td></tr>';
+        if (!empty($s['amount'])) { $o .= '<tr><th>不正請求額</th><td>' . h($s['amount']) . '</td></tr>'; }
+        $o .= '<tr><th>根拠法令</th><td>' . h($s['law']) . '</td></tr>'
+            . '</tbody></table></div>'
+            . '<p class="src" style="margin:10px 0 0">出典: <a href="' . h($s['source_url']) . '" rel="nofollow noopener" target="_blank">' . h($s['source']) . '</a>。'
+            . '発表資料に書かれている内容をそのまま載せています（' . h(ymd_ja($s['checked'])) . 'に確認）。処分のくわしい内容や、いま利用している方への影響は、処分庁か事業所にお問い合わせください。</p>'
+            . '</div>';
+    }
+    return $o;
+}
+
 // ── データの引き当て ────────────────────────────────────
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function n($v) { return number_format((int)$v); }
@@ -554,6 +598,10 @@ if (preg_match('#^office/(\d+)$#', $path, $m)) {
           . $o['pref'] . $o['city'] . $o['addr'] . '。'
           . ($o['capacity'] !== null ? '定員' . n($o['capacity']) . '人。' : '')
           . '運営は' . $o['corp'] . '。同じ法人の他の事業所と、近くの住まいも距離順で探せます（' . tp_label($LATEST) . '時点の公表データ）。';
+    $sho = shobun_for(array($o['office_no']));
+    if (count($sho)) {
+        $desc = ymd_ja($sho[0]['date']) . '、' . $sho[0]['authority'] . 'が行政処分（' . $sho[0]['action'] . '）を公表。' . $desc;
+    }
     $ld = array('@type' => 'GovernmentService', 'name' => $o['name'],
                 'serviceType' => $o['kind'], 'areaServed' => $o['pref'] . $o['city'],
                 'provider' => array('@type' => 'Organization', 'name' => $o['corp']),
@@ -597,6 +645,7 @@ if (preg_match('#^office/(\d+)$#', $path, $m)) {
     if ($o['note']) { echo '<h3>事業所からの特記事項</h3><p>' . h($o['note']) . '</p>'; }
     if ($o['url']) { echo '<p><a class="btn ghost" href="' . h($o['url']) . '" rel="nofollow noopener" target="_blank">事業所のサイトを開く</a></p>'; }
     echo '</div>';
+    echo shobun_html($sho);
     // 事業所名で検索して来た人の「次の一歩」。検索から来た人の7割はこの事業所ページに着地する（2026-09 GSC）。
     // 探している家族には、入居までの手順と家賃の補助を。運営している側には、掲載内容の出どころと直し方を。
     // 補助の金額と対象は、国の制度（特定障害者特別給付費）だけを書く。自治体の上乗せは額がまちまちなので書かない。
@@ -738,6 +787,10 @@ if (preg_match('#^corp/(.+)$#', $path, $m)) {
         echo '<p class="src">法人番号は公表データに入っていません。</p>';
     }
     echo '</div>';
+
+    $sho_nos = array();
+    foreach (array_merge($offs, $gones) as $r) { if ($r['office_no'] !== '' && $r['office_no'] !== null) { $sho_nos[$r['office_no']] = true; } }
+    echo shobun_html(shobun_for(array_map('strval', array_keys($sho_nos))), true);
 
     if (count($prefs) > 1) {
         echo '<h2>都道府県別の内訳</h2><div class="panel"><div class="tscroll"><table class="t"><thead><tr><th>都道府県</th><th class="n">か所</th></tr></thead><tbody>';

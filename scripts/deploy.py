@@ -15,6 +15,7 @@
 置き場所:
   /web/kurage_exbridge_jp/kghome.php
   /web/kurage_exbridge_jp/kghome_data/kghome.sqlite … 21MB。.htaccess で直読み禁止
+  /web/kurage_exbridge_jp/kghome_data/shobun.json   … 行政処分の公表（発表資料からの転記。--php でも送る）
   /web/kurage_exbridge_jp/images/ogp/kghome.png     … OGP（kghome_data 配下は拒否なので別の場所）
 """
 import ftplib
@@ -36,6 +37,7 @@ if "--extra" in sys.argv:
 
 FILES = [(f"{ROOT}/php/kghome.php", f"{REMOTE}/kghome.php"),
          (f"{ROOT}/php/kghome_data/.htaccess", f"{REMOTE}/kghome_data/.htaccess"),
+         (f"{ROOT}/php/kghome_data/shobun.json", f"{REMOTE}/kghome_data/shobun.json"),
          (f"{ROOT}/outputs/kghome_ogp.png", f"{REMOTE}/images/ogp/kghome.png")]
 if not PHP_ONLY:
     FILES.insert(1, (f"{ROOT}/php/kghome_data/kghome.sqlite", f"{REMOTE}/kghome_data/kghome.sqlite"))
